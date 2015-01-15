@@ -1,0 +1,9 @@
+table.wp-plugin-packer {
+	margin-left: 50px;
+	width: 95%;
+	border-collapse: collapse;
+}
+table.wp-plugin-packer tr {
+	border-bottom: 1px solid #E5E5E5;
+	cursor: pointer;
+}
