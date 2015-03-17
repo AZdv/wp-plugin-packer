@@ -41,35 +41,37 @@
 			}
 		});
 		form.on( 'blur', 'input.pack-title', function() {
-			$( this ).hide().siblings().show();
+			form.find( 'input[type="submit"]' ).prop( 'disabled', true );
+			$( this ).hide().siblings(':not(input)').show();
+			var data = {
+				action: 'sanitize_title',
+				sanitize_title: $( this ).val(),
+			}
+			var that = $( this );
+			$.post( ajaxurl, data, function( response ) {
+				that.siblings( '.pack-slug' ).val( response.data.message );
+				form.find( 'input[type="submit"]' ).prop( 'disabled', false );
+			});
 		});
 
 		form.submit( function( e ) {
-			var packs = [];
+			var packs = {};
 			var pack = {};
-			form.find( '.pack-title, .plugin_file_name' ).each( function( index ) {
-				if ( $( this ).hasClass( 'pack-title' ) ) {
-					//If there's already a pack defined, let's add it to packs
-					if ( ! $.isEmptyObject( pack ) )
-						packs.push( pack );
-
-					pack = {
-						'name': $( this ).val(),
-						'plugins': []
-					}
-				} else if ( typeof pack !== 'undefined' ) {
-					pack.plugins.push({
+			form.find( '.single-pack' ).each( function( index ) {
+				var slug = $( this ).find( 'input.pack-slug' ).val();
+				packs[ slug ] = {
+					'name': $( this ).find( 'input.pack-title' ).val(),
+					'plugins': {}
+				}
+				$( this ).find( '.plugin_file_name' ).each( function( index ) {
+					packs[ slug ].plugins[ $( this ).val() ] = {
 						'name': $( this ).siblings( '.plugin-title-value' ).text(),
 						'version': $( this ).siblings( '.version' ).children( '.version-value' ).text(),
-						'file': $( this ).val(),
-					});
-				} else {
-					//No pack? it can't be! let's return false
-					return false;
-				}
+						'file': $( this ).val(),						
+					}
+				});
 			});
-			//Pushing last pack
-			packs.push( pack );
+
 			form.find( '#plugin_packs' ).val( JSON.stringify( packs ) );
 		});
 
@@ -98,12 +100,12 @@
 					'nonce': translationStrings.nonce,
 				}
 				$.post( ajaxurl, data, _.bind( function( response ) {
-					//window.location.reload();
+					window.location.reload();
 				}))
 			}
 		});
 
-		var checkboxes = form.find( 'input:checkbox' );
+		var checkboxes = form.find( 'input:checkbox:not(.select-pack)' );
 		var reactive_btns = form.find( '.export-button, .disable-button, .enable-button' );
 		if ( checkboxes.filter( ':checked' ).length ) {
 			reactive_btns.removeClass( 'disabled' );
@@ -139,9 +141,9 @@
 			
 			var plugin_files = '';
 			checkboxes.filter( ':checked' ).each( function( i ) {
-				plugin_files += 'plugin_files[]=' + encodeURIComponent( $( this ).closest( 'tr' ).find( 'input.plugin_file_name' ).val() );
+				plugin_files += 'plugin_files[]=' + encodeURIComponent( $( this ).closest( 'tr' ).find( 'input.plugin_file_name' ).val() ) + '&';
 			});
-			$( '#export_file_iframe' ).attr( 'src', document.URL + '&action=export_file&nonce=' + translationStrings.nonce + '&' + plugin_files );
+			$( '#export_file_iframe' ).attr( 'src', document.URL + '&' + plugin_files + 'action=export_file&nonce=' + translationStrings.nonce );
 		});
 
 
