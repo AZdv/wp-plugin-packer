@@ -41,6 +41,7 @@ register_deactivation_hook( __FILE__, 'deactivate_wp_plugin_packer' );
  * The core plugin class that is used to define internationalization,
  * dashboard-specific hooks, and public-facing site hooks.
  */
+require plugin_dir_path( __FILE__ ) . 'includes/class-wp-plugin-packer-helper.php';
 require plugin_dir_path( __FILE__ ) . 'includes/class-wp-plugin-packer.php';
 
 function run_wp_plugin_packer() {

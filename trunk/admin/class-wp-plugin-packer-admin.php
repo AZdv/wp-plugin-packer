@@ -22,10 +22,13 @@ class Wp_Plugin_Packer_Admin {
 
 		$this->wp_plugin_packer = $wp_plugin_packer;
 		$this->version = $version;
-		
+
 		add_action( 'admin_menu', array( $this, 'plugin_packer_menu' ) );
 		add_action( 'admin_init', array( $this, 'plugin_packer_init' ) );
-
+		add_action( 'upload_mimes', array( $this, 'add_json_mime' ) );
+		add_action( 'wp_ajax_wp_plugin_packer_import_file', array( $this, 'import_file' ) );
+		add_action( 'upgrader_process_complete', array( $this, 'add_plugin_to_pack' ), 99 );
+		add_action( 'admin_notices', array( $this, 'missing_plugins_notices' ) );
 	}
 
 	/**
@@ -40,88 +43,314 @@ class Wp_Plugin_Packer_Admin {
 	 */
 	public function enqueue_scripts() {
 		wp_enqueue_script( 'jquery-ui-sortable' );
-		wp_enqueue_script( $this->wp_plugin_packer, plugin_dir_url( __FILE__ ) . 'js/wp-plugin-packer-admin.js', array( 'jquery', 'jquery-ui-sortable' ), $this->version, false );
+		wp_enqueue_media();
+		wp_register_script( $this->wp_plugin_packer, plugin_dir_url( __FILE__ ) . 'js/wp-plugin-packer-admin.js', array( 'jquery', 'jquery-ui-sortable', 'media' ), $this->version, false );
+		
+		wp_localize_script( $this->wp_plugin_packer, 'translationStrings', [
+			'wp_plugin_packer' => $this->wp_plugin_packer,
+			'nonce' => wp_create_nonce( $this->wp_plugin_packer ),
+			'download_export_file' => __( 'Download Export File' ),
+			'import_modal_title' => __( 'Import Plugin Packs (json format only)' ),
+			'import_confirm' => __( "Import will overwrite your current Plugin Packs! \nAre you sure?" ),
+			'deactivate_url' => admin_url( 'plugins.php?deactivate=true' ),
+			'nonce_plugins' => wp_create_nonce( 'bulk-plugins' ),
+		] );
+		
+		wp_enqueue_script( $this->wp_plugin_packer );
 	}
 
 	/**
 	 * Admin Init
 	 */
 	public function plugin_packer_init() {
+		if ( isset( $_POST['plugin_packs'] ) ) {
+			$this->set_plugin_packs( $_POST['plugin_packs'] );
+		}
+		if ( isset( $_GET['action'] ) ) {
+			switch ( $_GET['action'] ) {
+				case 'export_file':
+					$this->handle_generate_export_file(); //Outputting json & exiting
+					break;
+				case 'delete':
+					if ( isset( $_GET['plugin'] ) )
+						$this->handle_delete_plugin( $_GET['plugin'] );
+					break;
+			}
+
+		}
 		register_setting( $this->wp_plugin_packer, $this->wp_plugin_packer . '_plugin_packs' ); // is this needed?
 
 		add_settings_section( 
 			$this->wp_plugin_packer . '_plugin_packs_section', // ID
 			'', // Title
 			array( $this, 'plugin_packs_callback' ), // callback
-			$this->wp_plugin_packer . '_settings' // page's menu slug (from add_options_page)
-			);
-
-		/*add_settings_field( 
-			$this->wp_plugin_packer . '_plugin_packs', // ID
-			'', // Title
-			array( $this, 'plugin_packs_callback' ), // callback
-			$this->wp_plugin_packer . '_settings', // page's menu slug (from add_options_page)
-			$this->wp_plugin_packer . '_plugin_packs_section' // section ID (from add_settings_section)
-			);*/
+			$this->wp_plugin_packer // page's menu slug (from add_options_page)
+		);
 
 	}
 
 	public function plugin_packer_menu() {
-		add_options_page( 'Plugin Packer', 'Plugin Packer', 'manage_options', $this->wp_plugin_packer . '_settings', function() { 
+		add_options_page( 'Plugin Packer', 'Plugin Packer', 'manage_options', $this->wp_plugin_packer, function() {
 			ob_start();
-			require_once plugin_dir_path( __FILE__ ) . 'partials/wp-plugin-packer-admin-display.php'; 
+			require_once plugin_dir_path( __FILE__ ) . 'partials/wp-plugin-packer-admin-display.php';
 			echo ob_get_clean();
 		} );
+
 	}
 
 	public function plugin_packs_callback() {
 		$plugin_packs = $this->get_plugin_packs();
-		foreach( $plugin_packs as $key => $pack ) {
-			$str = '<div>' . __( 'Drag & Drop to sort' ) . '</div>';
-			$str .= sprintf( '<h3>%s</h3>', $pack['name'] );
+		$i = 0;
+		$str = '';
+		$str .= '<div class="drag-and-drop">' . __( 'Drag & Drop to sort' ) . '</div>';
+		foreach( $plugin_packs as $pack ) {
+			$str .= '<div class="single-pack">';
+			$str .= sprintf( '<div class="single-pack-title"><input type="checkbox" class="select-pack" /><h3 class="editable hint--right" data-hint="Click to edit">%s</h3><input type="text" class="pack-title" value="%s" /></div>', $pack['name'], $pack['name'] );
+			if ( $i )
+				$str .= '<div class="button remove-pack">' . __( 'Remove Pack' ) . '</div>';
 			$str .= sprintf( '<table class="%s widefat plugins"><tbody>', $this->wp_plugin_packer );
-			foreach( $pack['plugins'] as $mkey => $plugin ) {
-				$str .= sprintf( '<tr class="%s">', is_plugin_active( $plugin['file'] ) ? 'active' : 'inactive' );
-				$str .= sprintf( '<th class="check-column plugin-name"><label><input type="checkbox" name="%s" %s /></label></th>' , $this->wp_plugin_packer . '_plugin_packs', '' );
-				$str .= sprintf( '<td class="plugin-title"><strong>%s</strong><div>Version: %s , %s</div></td>' , $plugin['name'], $plugin['version'], ( is_plugin_active( $plugin['file'] ) ? 'Activated' : 'Deactivated' ) );
-				$str .= '</tr>';
+			foreach( $pack['plugins'] as $plugin ) {
+				$missing = isset( $plugin['missing'] ) ? $plugin['missing'] : false;
+				$str .= sprintf( '<tr class="%s %s">', is_plugin_active( $plugin['file'] ) ? 'active' : 'inactive', $missing ? 'missing' : '' );
+				$str .= sprintf( '<th class="plugin-name"><label><input type="checkbox" name="%s" %s /></label></th>' , $this->wp_plugin_packer . '_plugin_packs', $missing ? 'disabled="disabled"' : '' );
+				$str .= sprintf( '<td class="plugin-title"><strong class="plugin-title-value">%s</strong> %s<div class="version">Version: <span class="version-value">%s</span> , %s</div><input type="hidden" class="plugin_file_name" value="%s" />' , $plugin['name'], $missing ? __( ' <em>Missing!</em>' ) : '', $plugin['version'], ( is_plugin_active( $plugin['file'] ) ? 'Activate' : 'Inactive' ), $plugin['file'] );
+				if ( $missing )
+					$str .= '<a href="' . admin_url( 'options-general.php?page=' . $this->wp_plugin_packer . '&action=delete&plugin=' . sanitize_title( $plugin['name'] ) ) . '">' . __( 'Delete' ) . '</a>';
+				$str .= '</td></tr>';
 			}
-			$str .= '</tbody></table>';
+			$str .= sprintf( '<tr class="placeholder"><td colspan="3">%s</td></tr></tbody></table></div>', __( 'Drop Plugins Here') );
+			$i++;
 		}
 		echo $str;
 	}
 
-	/*public function plugin_packs_section_callback() {
-		//Section HTML
-	}*/
+	public function set_plugin_packs( $packs ) {
+		if ( ! is_string( $packs ) )
+			$packs = json_encode( $packs );
 
+		update_option( $this->wp_plugin_packer . '_plugin_packs', $packs );
+	}
 	public function get_plugin_packs() {
-		$plugin_packs = wp_cache_get( $this->wp_plugin_packer . '_plugin_packs' );
+		$plugin_packs = get_option( $this->wp_plugin_packer . '_plugin_packs' );
+		$missing_plugins = [];
 		if ( false === $plugin_packs ) {
 			$plugin_packs = $this->init_plugin_packs();
+		} else {
+			if ( is_string( $plugin_packs ) ) {
+				$plugin_packs = json_decode( stripcslashes( $plugin_packs ), true );
+			}
+			$existing_plugins = get_plugins();
+			//Running through packs to see if any plugin was deleted since last update
+			foreach ( $plugin_packs as &$pack ) {
+				foreach ( $pack['plugins'] as $key => &$plugin ) {
+					if ( ! isset( $existing_plugins[ $plugin['file'] ]) ) {
+						$plugin['missing'] = true;
+						$missing_plugins[] = $plugin;
+					}
+				}
+			}
+			
 		}
+		$this->set_missing_plugins( $missing_plugins );
+
 		return $plugin_packs;
 	}
 
 	public function init_plugin_packs() {
 		$plugins_array = get_plugins();
 		$plugin_packs = [];
+		$plugins_update_urls = get_site_option( '_site_transient_update_plugins' );
+		$plugins_update_urls = (array)$plugins_update_urls->response + (array)$plugins_update_urls->checked + (array)$plugins_update_urls->no_update;
+		//preparing default plugins structure
 		foreach( $plugins_array as $key => $plugin ) {
-			$plugin_packs[ sanitize_title( $plugin[ 'Name' ] ) ] = [
+			$plugin_packs[] = [
 				'name' => $plugin[ 'Name' ],
 				'version' => $plugin[ 'Version' ],
 				'file' => $key,
+				'wp_api_slug' => isset( $plugins_update_urls[ $key ] ) ? $plugins_update_urls[ $key ]->slug : null,
 			];
 		}
-		$plugin_packs = [
-			'default' => [
-				'name' => 'Default Pack',
-				'plugins' => $plugin_packs
-			]
-		];
+
+		//packing all plugins in Default Pack (initial state)
+		$plugin_packs = [[
+			'name' => 'Default Pack',
+			'plugins' => $plugin_packs
+		]];
+		$this->set_plugin_packs( $plugin_packs );
+		
 		return $plugin_packs;
 	}
 
+	public function set_missing_plugins( $missing_plugins ) {
+		if ( ! is_string( $missing_plugins ) )
+			$missing_plugins = json_encode( $missing_plugins );
 
+		update_option( $this->wp_plugin_packer . '_missing_plugins', $missing_plugins );
+	}
+	public function get_missing_plugins( $array = false ) {
+		$missing_plugins = get_option( $this->wp_plugin_packer . '_missing_plugins' );
+		if ( $array ) {
+			$missing_plugins = json_decode( stripcslashes( $missing_plugins ) );
+		}
+		return $missing_plugins;
+	}
+
+	// Import/Export
+	public function handle_generate_export_file() {
+		if ( ! wp_verify_nonce( $_GET['nonce'], $this->wp_plugin_packer ) ) {
+			wp_send_json_error( [ 'error' => __( 'Bad Request' ) ] );
+		}
+		if ( isset( $_GET['plugin_files'] ) && count( $_GET['plugin_files'] ) ) {
+			$plugin_packs = json_decode( stripcslashes( get_option( $this->wp_plugin_packer . '_plugin_packs' ) ) );
+			foreach ( $plugin_packs as $key => &$pack ) {
+				//Going through plugins, removing the ones that are not included in export
+				foreach ( $pack->plugins as $key => $plugin ) {
+					$plugin_in_export = false;
+					foreach ( $_GET['plugin_files'] as $plugin_file ) {
+						if ( $plugin_file == $plugin->file ) {
+							$plugin_in_export = true;
+							break;
+						}
+					}
+					if ( ! $plugin_in_export ) {
+						unset( $pack->plugins[ $key ] );
+					}
+				}
+			}
+			$plugins_json = Wp_Plugin_Packer_Helper::prettyPrint( stripcslashes( json_encode( $plugin_packs ) ) );
+		} else {
+			$plugins_json = Wp_Plugin_Packer_Helper::prettyPrint( stripcslashes( get_option( $this->wp_plugin_packer . '_plugin_packs' ) ) );
+		}
+		
+		$length = strlen( $plugins_json );
+		header( 'Content-Description: File Transfer' );
+		header( 'Content-Type: text/plain' );
+		header( 'Content-Disposition: attachment; filename=export.json' );
+		header( 'Content-Transfer-Encoding: binary' );
+		header( 'Content-Length: ' . $length );
+		header( 'Cache-Control: must-revalidate, post-check=0, pre-check=0' );
+		header( 'Expires: 0' );
+		header( 'Pragma: public' );
+		echo $plugins_json;
+		exit;
+	}
+
+	public function add_json_mime( $mime_types = array() ) {
+		//Adding JSON to allowed mime types, to enable json upload
+		$mime_types[ 'json' ] = 'application/json';
+
+		return $mime_types;
+	}
+
+	public function import_file() {
+		if ( ! wp_verify_nonce( $_POST['nonce'], $this->wp_plugin_packer ) || ! is_numeric( $_POST['attachment_id'] ) ) {
+			wp_send_json_error( [ 'error' => __( 'Bad Request' ) ] );
+		}
+		$file = get_attached_file( $_POST['attachment_id'] );
+		if ( file_exists( $file ) ) {
+			$file = file_get_contents( $file );
+			$imported_plugins_array = json_decode( $file );
+			$existing_plugins_array = get_plugins();
+			$existing_plugin_packs = $this->get_plugin_packs();
+			$none_existing_plugins = [];
+
+			//TODO: Add an option to overwrite OR merge the imported plugin packs
+			foreach ( $imported_plugins_array as $pack ) {
+				foreach ( $pack->plugins as $plugin ) {
+					$plugin_exists = false;
+					foreach ( $existing_plugin_packs as &$e_pack ) {
+						foreach ( $e_pack['plugins'] as $key => $e_plugin ) {
+							if ( $e_plugin['file'] == $plugin->file || sanitize_title( $plugin->name ) == $this->wp_plugin_packer ) {
+								$plugin_exists = true;
+								//If the plugin exists but in different pack, let's overwrite
+								if ( $e_pack['name'] != $pack->name ) {
+									unset( $e_pack[ $key ] );
+								}
+								
+							}
+						}
+					}
+					if ( ! $plugin_exists ) {
+						$none_existing_plugins[] = [
+							'name' => $plugin->name,
+							'wp_api_slug' => $plugin->wp_api_slug,
+							'required' => true,
+						];
+
+						//Also adding the plugin to the Default Pack
+						$existing_plugin_packs[0]['plugins'][] = $plugin;
+					}
+				}
+			}
+
+			if ( ! empty( $none_existing_plugins ) ) {
+				//the missing plugins are for the admin_notice
+				$this->set_missing_plugins( $none_existing_plugins );
+				$this->set_plugin_packs( $existing_plugin_packs );
+			}
+
+			wp_send_json_success( [ 'message' => __( 'Import Successful' ) ] );
+		}
+	}
+
+	public function add_plugin_to_pack( $args ) {
+		$plugin_packs = $this->get_plugin_packs();
+		wp_cache_delete( 'plugins', 'plugins' );
+		$existing_plugins = get_plugins();
+		$file = null;
+		foreach ( $existing_plugins as $key => $plugin ) {
+			if ( isset( $plugin['Name'] ) && $plugin['Name'] == $args->skin->api->name ) {
+				$file = $key;
+				break;
+			}
+		}
+		//Adding plugin to First Pack
+		$plugin_packs[0]['plugins'][] = [
+			'name' => $args->skin->api->name,
+			'version' => $args->skin->api->version,
+			'file' => $file,
+			'wp_api_slug' => $args->skin->api->slug,
+		];
+
+		$this->set_plugin_packs( $plugin_packs );
+	}
+
+	/**
+	 * missing plugins notices
+	 */
+	public function missing_plugins_notices() {
+		$screen = get_current_screen();
+		if ( $screen->id == 'settings_page_' . $this->wp_plugin_packer ) {
+			$missing_plugins = $this->get_missing_plugins( true );
+			$notice = '';
+			if ( ! empty ( $missing_plugins ) )  {
+				$notice .= '<div class="updated"><p>' . __( 'The following plugins were imported into packs, but are not installed: ' );
+				$i = 0;
+				foreach ( $missing_plugins as $plugin ) {
+					$notice .= ( $i == 0 ? '' : ', ' ) . '<a target="_blank" href="' . admin_url( 'plugin-install.php?tab=plugin-information&plugin=' . $plugin->wp_api_slug ) . '">' .  $plugin->name . '</a>';
+					$i++;
+				}
+				$notice .= '</p></div>';
+			}
+			if ( isset( $_GET['deleted'] ) ) {
+				$notice .= '<div class="updated"><p>' . __( 'Successfully deleted the plugin: ' ) . $_GET['deleted'];
+				$notice .= '</p></div>';
+			}
+			echo $notice;
+		}
+	}
+
+	public function handle_delete_plugin( $plugin_name ) {
+		$plugin_packs = $this->get_plugin_packs();
+		foreach ( $plugin_packs as &$pack ) {
+			foreach ( $pack['plugins'] as $key => $plugin ) {
+				if ( sanitize_title( $plugin['name'] ) == $plugin_name ) {
+					unset( $pack['plugins'][$key] );
+				}
+			}
+		}
+		$this->set_plugin_packs( $plugin_packs );
+		wp_redirect( admin_url( 'options-general.php?page=' . $this->wp_plugin_packer . '&deleted=' . $plugin_name ) );
+	}
 
 }  
