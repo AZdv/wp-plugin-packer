@@ -150,6 +150,12 @@ class Wp_Plugin_Packer_Admin {
 					if ( ! isset( $existing_plugins[ $plugin['file'] ]) ) {
 						$plugin['missing'] = true;
 						$missing_plugins[ $plugin['file'] ] = $plugin;
+					} else {
+						if ( isset( $missing_plugins[ $plugin['file'] ] ) )
+							unset( $missing_plugins[ $plugin['file'] ] );
+
+						unset( $plugin['missing'] );
+						
 					}
 				}
 			}
@@ -316,13 +322,24 @@ class Wp_Plugin_Packer_Admin {
 				break;
 			}
 		}
+		$add_plugin = true; //If plugin exists, don't add the plugin - just remove its "missing" flag
+		foreach ( $plugin_packs as &$pack ) {
+			foreach ( $pack['plugins'] as $key => $plugin ) {
+				if ( $plugin['name'] == $args->skin->api->name ) {
+					$add_plugin = false;
+					unset( $pack['plugins'][ $key ]['missing'] );
+				}
+			}
+		}
 		//Adding plugin to First Pack
-		$plugin_packs[ $this->default_pack_slug ]['plugins'][] = [
-			'name' => $args->skin->api->name,
-			'version' => $args->skin->api->version,
-			'file' => $file,
-			'wp_api_slug' => $args->skin->api->slug,
-		];
+		if ( $add_plugin ) {
+			$plugin_packs[ $this->default_pack_slug ]['plugins'][] = [
+				'name' => $args->skin->api->name,
+				'version' => $args->skin->api->version,
+				'file' => $file,
+				'wp_api_slug' => $args->skin->api->slug,
+			];
+		}
 
 		$this->set_plugin_packs( $plugin_packs );
 	}
@@ -339,11 +356,13 @@ class Wp_Plugin_Packer_Admin {
 				$notice .= '<div class="updated"><p>' . __( 'The following plugins are in packs, but are not installed: ' );
 				$i = 0;
 				foreach ( $missing_plugins as $plugin ) {
+					$notice .= ( $i == 0 ? '' : ', ' ) . '<a target="_blank" href="';
 					if ( $plugin->wp_api_slug ) {
-						$notice .= ( $i == 0 ? '' : ', ' ) . '<a target="_blank" href="' . admin_url( 'plugin-install.php?tab=plugin-information&plugin=' . $plugin->wp_api_slug ) . '">' . $plugin->name . '</a>';
+						$notice .= admin_url( 'plugin-install.php?tab=plugin-information&plugin=' . $plugin->wp_api_slug );
 					} else {
-						$notice .= ( $i == 0 ? '' : ', ' ) . '<a target="_blank" href="' . admin_url( 'plugin-install.php?tab=search&type=term&s=' . urlencode( $plugin->name ) ) . '">' . $plugin->name . '</a>';
+						$notice .= admin_url( 'plugin-install.php?tab=search&type=term&s=' . urlencode( $plugin->name ) );
 					}
+					$notice .= '">' . $plugin->name . '</a>';
 					$i++;
 				}
 				$notice .= '</p></div>';
