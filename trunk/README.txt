@@ -1,29 +1,24 @@
-=== Plugin Name ===
-Contributors: (this should be a list of wordpress.org userid's)
-Donate link: http://www.kidsil.net
-Tags: comments, spam
-Requires at least: 3.0.1
-Tested up to: 3.4
-Stable tag: 4.3
-License: GPLv2 or later
-License URI: http://www.gnu.org/licenses/gpl-2.0.html
+=== WP Plugin Packer ===
+Contributors: AZdv
+Tags: plugins, plugin group, packs
+Requires at least: 3.9
+Tested up to: 4.1.1
+License: GPL 2
 
-Packs WP Plugins to enable batch installation & import/export of Plugin Packs
+WP Plugin Packer lets you create plugin packs (=groups) to export and import to various WordPress websites.
 
 == Description ==
-
-Packs WP Plugins to enable batch installation & import/export of Plugin Packs
+WP Plugin Packer lets you create plugin packs (=groups) to export and import to various WordPress websites.
 
 == Installation ==
-
-1. Upload `wp-plugin-packer.php` to the `/wp-content/plugins/` directory
-2. Activate the plugin through the 'Plugins' menu in WordPress
-3. Place `<?php do_action('wp_plugin_packer_hook'); ?>` in your templates
+1. Download the plugin via WordPress.org
+2. Upload the ZIP file through the \'Plugins > Add New > Upload\' screen in your WordPress dashboard
+3. Activate the plugin through the \'Plugins\' menu in WordPress
+4. Go to WP Plugin Packer Settings and define your Plugin Packs
 
 == Frequently Asked Questions ==
-
+= My Plugin has a red background and says \"Missing!\", what should I do? =
+If you want to have that plugin, you should install it, if you removed that plugin and you don\'t want it in a pack, simply click on the \"Delete\" link.
 
 == Screenshots ==
-
-
-== Changelog ==
+1. WP Plugin Packer Settings
