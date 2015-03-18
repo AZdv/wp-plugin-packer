@@ -1,5 +1,5 @@
 <div class="wrap">
-	<h2><?php _e( 'Plugin Packer Settings' ) ?></h2>
+	<h2><?php _e( 'WP Plugin Packer Settings' ) ?></h2>
 
 	<form method="post" id="wp_plugin_packer_form">
 		<?php settings_fields( $this->wp_plugin_packer ) ?>

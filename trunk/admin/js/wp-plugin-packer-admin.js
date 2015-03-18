@@ -73,6 +73,7 @@
 			});
 
 			form.find( '#plugin_packs' ).val( JSON.stringify( packs ) );
+
 		});
 
 		form.on( 'click', '.remove-pack', function( event ) {
