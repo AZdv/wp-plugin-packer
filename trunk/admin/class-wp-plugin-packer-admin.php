@@ -94,7 +94,7 @@ class Wp_Plugin_Packer_Admin {
 	}
 
 	public function plugin_packer_menu() {
-		add_options_page( 'Plugin Packer', 'Plugin Packer', 'manage_options', $this->wp_plugin_packer, function() {
+		add_options_page( 'WP Plugin Packer', 'WP Plugin Packer', 'manage_options', $this->wp_plugin_packer, function() {
 			ob_start();
 			require_once plugin_dir_path( __FILE__ ) . 'partials/wp-plugin-packer-admin-display.php';
 			echo ob_get_clean();

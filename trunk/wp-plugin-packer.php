@@ -9,7 +9,7 @@
  * @wordpress-plugin
  * Plugin Name:       WP Plugin Packer
  * Plugin URI:        https://github.com/AZdv/wp-plugin-packer
- * Description:       Packs WP Plugins to enable batch installation & import/export of Plugin Packs
+ * Description:       Lets you create plugin packs (=groups) to export and import to various WordPress websites
  * Version:           1.0.0
  * Author:            Asaf Zamir
  * Author URI:        http://www.kidsil.net
