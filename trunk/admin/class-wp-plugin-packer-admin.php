@@ -49,7 +49,7 @@ class Wp_Plugin_Packer_Admin {
 		wp_enqueue_media();
 		wp_register_script( $this->wp_plugin_packer, plugin_dir_url( __FILE__ ) . 'js/wp-plugin-packer-admin.js', array( 'jquery', 'jquery-ui-sortable', 'media' ), $this->version, false );
 		
-		wp_localize_script( $this->wp_plugin_packer, 'translationStrings', [
+		wp_localize_script( $this->wp_plugin_packer, 'translationStrings', array(
 			'wp_plugin_packer' => $this->wp_plugin_packer,
 			'nonce' => wp_create_nonce( $this->wp_plugin_packer ),
 			'download_export_file' => __( 'Download Export File' ),
@@ -57,7 +57,7 @@ class Wp_Plugin_Packer_Admin {
 			'import_confirm' => __( "Import will overwrite your current Plugin Packs! \nAre you sure?" ),
 			'deactivate_url' => admin_url( 'plugins.php?deactivate=true' ),
 			'nonce_plugins' => wp_create_nonce( 'bulk-plugins' ),
-		] );
+		) );
 		
 		wp_enqueue_script( $this->wp_plugin_packer );
 	}
@@ -93,12 +93,14 @@ class Wp_Plugin_Packer_Admin {
 
 	}
 
+	public function handle_admin_display() {
+		ob_start();
+		require_once plugin_dir_path( __FILE__ ) . 'partials/wp-plugin-packer-admin-display.php';
+		echo ob_get_clean();
+	}
+	
 	public function plugin_packer_menu() {
-		add_options_page( 'WP Plugin Packer', 'WP Plugin Packer', 'manage_options', $this->wp_plugin_packer, function() {
-			ob_start();
-			require_once plugin_dir_path( __FILE__ ) . 'partials/wp-plugin-packer-admin-display.php';
-			echo ob_get_clean();
-		} );
+		add_options_page( 'WP Plugin Packer', 'WP Plugin Packer', 'manage_options', $this->wp_plugin_packer, array( $this, 'handle_admin_display' ) );
 
 	}
 
@@ -136,7 +138,7 @@ class Wp_Plugin_Packer_Admin {
 	}
 	public function get_plugin_packs() {
 		$plugin_packs = get_option( $this->wp_plugin_packer . '_plugin_packs' );
-		$missing_plugins = [];
+		$missing_plugins = array();
 		if ( false === $plugin_packs ) {
 			$plugin_packs = $this->init_plugin_packs();
 		} else {
@@ -206,7 +208,7 @@ class Wp_Plugin_Packer_Admin {
 	// Import/Export
 	public function handle_generate_export_file() {
 		if ( ! wp_verify_nonce( $_GET['nonce'], $this->wp_plugin_packer ) ) {
-			wp_send_json_error( [ 'error' => __( 'Bad Request' ) ] );
+			wp_send_json_error( array( 'error' => __( 'Bad Request' ) ) );
 		}
 		if ( isset( $_GET['plugin_files'] ) && count( $_GET['plugin_files'] ) ) {
 			$plugin_packs = json_decode( stripcslashes( get_option( $this->wp_plugin_packer . '_plugin_packs' ) ) );
@@ -222,7 +224,8 @@ class Wp_Plugin_Packer_Admin {
 					}
 					if ( ! $plugin_in_export ) {
 						unset( $pack->plugins->$e_key );
-						if ( empty( (array) $pack->plugins ) ) {
+						$check_me = (array) $pack->plugins;
+						if ( empty( $check_me ) ) {
 							unset( $plugin_packs->$key );
 						}
 					}
@@ -255,7 +258,7 @@ class Wp_Plugin_Packer_Admin {
 
 	public function import_file() {
 		if ( ! wp_verify_nonce( $_POST['nonce'], $this->wp_plugin_packer ) || ! is_numeric( $_POST['attachment_id'] ) ) {
-			wp_send_json_error( [ 'error' => __( 'Bad Request' ) ] );
+			wp_send_json_error( array( 'error' => __( 'Bad Request' ) ) );
 		}
 		$file = get_attached_file( $_POST['attachment_id'] );
 		if ( file_exists( $file ) ) {
@@ -263,7 +266,7 @@ class Wp_Plugin_Packer_Admin {
 			$imported_plugins_array = json_decode( $file );
 			$existing_plugins_array = get_plugins();
 			$existing_plugin_packs = $this->get_plugin_packs();
-			$none_existing_plugins = [];
+			$none_existing_plugins = array();
 
 			//TODO: Add an option to overwrite OR merge the imported plugin packs
 			foreach ( $imported_plugins_array as $key => $pack ) {
@@ -286,11 +289,11 @@ class Wp_Plugin_Packer_Admin {
 						}
 					}
 					if ( ! $plugin_exists ) {
-						$none_existing_plugins[] = [
+						$none_existing_plugins[] = array(
 							'name' => $plugin->name,
 							'wp_api_slug' => $plugin->wp_api_slug,
 							'required' => true,
-						];
+						);
 					}
 					$existing_plugin_packs[ $key ][ 'plugins' ][ $plugin->file ] = $plugin;
 					if ( ! isset( $existing_plugin_packs[ $key ]['name'] ) ) {
@@ -307,7 +310,7 @@ class Wp_Plugin_Packer_Admin {
 
 			$this->set_plugin_packs( $existing_plugin_packs );
 
-			wp_send_json_success( [ 'message' => __( 'Import Successful' ) ] );
+			wp_send_json_success( array( 'message' => __( 'Import Successful' ) ) );
 		}
 	}
 
@@ -333,12 +336,12 @@ class Wp_Plugin_Packer_Admin {
 		}
 		//Adding plugin to First Pack
 		if ( $add_plugin ) {
-			$plugin_packs[ $this->default_pack_slug ]['plugins'][] = [
+			$plugin_packs[ $this->default_pack_slug ]['plugins'][] = array(
 				'name' => $args->skin->api->name,
 				'version' => $args->skin->api->version,
 				'file' => $file,
 				'wp_api_slug' => $args->skin->api->slug,
-			];
+			);
 		}
 
 		$this->set_plugin_packs( $plugin_packs );
@@ -390,7 +393,7 @@ class Wp_Plugin_Packer_Admin {
 
 	public function handle_sanitize_title() {
 		if ( isset( $_POST['sanitize_title'] ) ) {
-			wp_send_json_success( [ 'message' => sanitize_title( $_POST['sanitize_title'] ) ] );
+			wp_send_json_success( array( 'message' => sanitize_title( $_POST['sanitize_title'] ) ) );
 		}
 	}
 
